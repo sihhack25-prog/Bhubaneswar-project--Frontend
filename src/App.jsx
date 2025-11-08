@@ -16,6 +16,8 @@ import LandingPage from './pages/LandingPage'
 import EnhancedLogin from './pages/EnhancedLogin'
 import AdminDashboard from './pages/AdminDashboard'
 import PlagiarismDetection from './pages/PlagiarismDetection'
+import LoadTesting from './pages/LoadTesting'
+import ManageStudents from './pages/ManageStudents'
 import ProtectedRoute from './components/ProtectedRoute'
 
 function App() {
@@ -66,6 +68,11 @@ function App() {
                   <PlagiarismDetection user={user} />
                 </ProtectedRoute>
               } />
+              <Route path="/manage-students" element={
+                <ProtectedRoute user={user} allowedRoles={['instructor']}>
+                  <ManageStudents user={user} />
+                </ProtectedRoute>
+              } />
               
               {/* Student Routes */}
               <Route path="/student" element={
@@ -91,6 +98,7 @@ function App() {
               
               {/* Shared Routes */}
               <Route path="/assignment/:id" element={<AssignmentDetails user={user} />} />
+              <Route path="/load-testing" element={<LoadTesting />} />
               </Routes>
             </div>
           </div>

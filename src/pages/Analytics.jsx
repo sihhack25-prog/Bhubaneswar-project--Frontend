@@ -1,41 +1,97 @@
 import { useState, useEffect } from 'react'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, ComposedChart } from 'recharts'
-import { TrendingUp, Users, Clock, Award } from 'lucide-react'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, Legend } from 'recharts'
+import { TrendingUp, Users, Clock, Award, Target, CheckCircle, XCircle } from 'lucide-react'
 
 const Analytics = ({ user }) => {
   const [anonymousMode, setAnonymousMode] = useState(false)
-  const [analyticsData, setAnalyticsData] = useState(null)
+  const [submissions, setSubmissions] = useState([])
+  const [assignments, setAssignments] = useState([])
+  const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetchAnalytics()
+    fetchAllData()
   }, [])
 
-  const fetchAnalytics = async () => {
+  const fetchAllData = async () => {
     try {
-      const token = localStorage.getItem('token')
-      if (!token) {
-        setLoading(false)
-        return
+      // Fetch assignments first
+      const assignmentsRes = await fetch('http://localhost:3001/api/assignments')
+      const assignmentsData = await assignmentsRes.json()
+      
+      let fetchedAssignments = []
+      if (Array.isArray(assignmentsData)) {
+        fetchedAssignments = assignmentsData
+      } else if (assignmentsData.success && assignmentsData.assignments) {
+        fetchedAssignments = assignmentsData.assignments
       }
-
-      const response = await fetch('http://localhost:3001/api/analytics', {
-        headers: {
-          'Authorization': `Bearer ${token}`
+      setAssignments(fetchedAssignments)
+      
+      // Fetch submissions for each assignment
+      const allSubmissions = []
+      for (const assignment of fetchedAssignments) {
+        try {
+          const response = await fetch(`http://localhost:3001/api/assignments/${assignment._id}/submissions`)
+          if (response.ok) {
+            const data = await response.json()
+            if (data.success && data.submissions) {
+              allSubmissions.push(...data.submissions)
+            }
+          }
+        } catch (error) {
+          console.error(`Error fetching submissions for assignment ${assignment._id}:`, error)
         }
-      })
-      
-      const data = await response.json()
-      
-      if (data.success) {
-        setAnalyticsData(data)
       }
+      setSubmissions(allSubmissions)
     } catch (error) {
-      console.error('Error fetching analytics:', error)
+      console.error('Error fetching data:', error)
     } finally {
       setLoading(false)
     }
   }
+
+  const getAnalytics = () => {
+    const totalSubmissions = submissions.length
+    const avgScore = totalSubmissions > 0 
+      ? Math.round(submissions.reduce((sum, s) => sum + (s.finalScore || s.score || 0), 0) / totalSubmissions)
+      : 0
+    
+    const uniqueStudents = [...new Set(submissions.map(s => s.userId))].length
+    const passedSubmissions = submissions.filter(s => s.status === 'Passed').length
+    const failedSubmissions = submissions.filter(s => s.status === 'Failed').length
+    const partialSubmissions = submissions.filter(s => s.status === 'Partial').length
+    
+    const languageStats = submissions.reduce((acc, s) => {
+      acc[s.language] = (acc[s.language] || 0) + 1
+      return acc
+    }, {})
+    
+    const assignmentStats = assignments.map(a => {
+      const assignmentSubs = submissions.filter(s => String(s.assignmentId) === String(a._id))
+      return {
+        name: (a.main?.name || a.name || 'Untitled').substring(0, 15),
+        submissions: assignmentSubs.length,
+        avgScore: assignmentSubs.length > 0 
+          ? Math.round(assignmentSubs.reduce((sum, s) => sum + (s.finalScore || 0), 0) / assignmentSubs.length)
+          : 0
+      }
+    })
+    
+    return {
+      totalSubmissions,
+      avgScore,
+      uniqueStudents,
+      totalAssignments: assignments.length,
+      passedSubmissions,
+      failedSubmissions,
+      partialSubmissions,
+      languageStats,
+      assignmentStats
+    }
+  }
+
+  const analytics = getAnalytics()
+  const COLORS = ['#10b981', '#ef4444', '#f59e0b', '#3b82f6', '#8b5cf6']
 
   if (loading) {
     return (
@@ -46,27 +102,20 @@ const Analytics = ({ user }) => {
     )
   }
 
-  if (!analyticsData) {
-    return (
-      <div className="text-center" style={{ padding: '60px', color: 'var(--text-secondary)' }}>
-        <TrendingUp size={48} style={{ margin: '0 auto 16px', opacity: 0.5 }} />
-        <p>No analytics data available.</p>
-      </div>
-    )
-  }
+  const statusData = [
+    { name: 'Passed', value: analytics.passedSubmissions, color: '#10b981' },
+    { name: 'Failed', value: analytics.failedSubmissions, color: '#ef4444' },
+    { name: 'Partial', value: analytics.partialSubmissions, color: '#f59e0b' }
+  ]
 
-  const { metrics, leaderboard } = analyticsData
-  const leaderboardData = leaderboard.slice(0, 5).map((student, index) => ({
-    ...student,
-    id: index + 1,
-    name: student.studentId,
-    score: student.avgScore,
-    rank: index + 1
+  const languageData = Object.entries(analytics.languageStats).map(([lang, count]) => ({
+    name: lang.charAt(0).toUpperCase() + lang.slice(1),
+    value: count
   }))
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex justify-between items-center mb-6">
         <h1>Analytics Dashboard</h1>
         <label className="flex items-center gap-2">
           <input
@@ -79,99 +128,99 @@ const Analytics = ({ user }) => {
       </div>
 
       {/* Overall Metrics */}
-      <div className="grid grid-4 mb-6">
-        <div className="card text-center">
-          <TrendingUp size={32} style={{ margin: '0 auto 8px', color: '#007bff' }} />
-          <h3>{metrics.avgScore}%</h3>
-          <p>Average Score</p>
+      <div className="grid grid-4 mb-8" style={{ gap: '30px', marginTop: '30px' }}>
+        <div className="metric-card ">
+          <TrendingUp size={24} style={{ margin: '0 auto 8px' }} />
+          <div className="metric-value">{analytics.avgScore}%</div>
+          <div className="metric-label">Avg Score</div>
         </div>
-        <div className="card text-center">
-          <Users size={32} style={{ margin: '0 auto 8px', color: '#28a745' }} />
-          <h3>{metrics.totalSubmissions}</h3>
-          <p>Total Submissions</p>
+        <div className="metric-card ">
+          <Users size={24} style={{ margin: '0 auto 8px' }} />
+          <div className="metric-value">{analytics.totalSubmissions}</div>
+          <div className="metric-label">Submissions</div>
         </div>
-        <div className="card text-center">
-          <Clock size={32} style={{ margin: '0 auto 8px', color: '#ffc107' }} />
-          <h3>{metrics.totalStudents}</h3>
-          <p>Total Students</p>
+        <div className="metric-card ">
+          <Target size={24} style={{ margin: '0 auto 8px' }} />
+          <div className="metric-value">{analytics.uniqueStudents}</div>
+          <div className="metric-label">Students</div>
         </div>
-        <div className="card text-center">
-          <Award size={32} style={{ margin: '0 auto 8px', color: '#dc3545' }} />
-          <h3>{metrics.totalAssignments}</h3>
-          <p>Total Assignments</p>
+        <div className="metric-card ">
+          <Award size={24} style={{ margin: '0 auto 8px' }} />
+          <div className="metric-value">{analytics.totalAssignments}</div>
+          <div className="metric-label">Assignments</div>
         </div>
       </div>
 
-      <div className="grid grid-2" style={{ gap: '20px' }}>
-        {/* Leaderboard */}
+      <div className="grid grid-2" style={{ gap: '30px' }}>
+        {/* Submission Status Distribution */}
         <div className="card">
-          <h2 className="mb-4">Student Leaderboard</h2>
-          <div className="grid gap-2">
-            {leaderboardData.map(student => (
-              <div key={student.id} className="flex justify-between items-center"
-                   style={{ 
-                     padding: '12px', 
-                     backgroundColor: student.rank <= 3 ? '#f8f9fa' : 'transparent',
-                     borderRadius: '4px',
-                     border: student.rank <= 3 ? '1px solid #dee2e6' : 'none'
-                   }}>
-                <div className="flex items-center gap-3">
-                  <div style={{ 
-                    width: '24px', 
-                    height: '24px', 
-                    borderRadius: '50%', 
-                    backgroundColor: student.rank <= 3 ? '#007bff' : '#6c757d',
-                    color: 'white',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '12px',
-                    fontWeight: 'bold'
-                  }}>
-                    {student.rank}
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: '500' }}>
-                      {anonymousMode ? `Student ${student.id}` : student.name}
-                    </div>
-                    <div style={{ fontSize: '12px', color: '#666' }}>
-                      {student.submissions} submissions
-                    </div>
-                  </div>
-                </div>
-                <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#007bff' }}>
-                  {student.score}%
-                </div>
-              </div>
-            ))}
+          <h2 className="mb-4">Submission Status</h2>
+          <ResponsiveContainer width="100%" height={300}>
+            <PieChart>
+              <Pie
+                data={statusData}
+                cx="50%"
+                cy="50%"
+                labelLine={false}
+                label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                outerRadius={100}
+                fill="#8884d8"
+                dataKey="value"
+              >
+                {statusData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} />
+                ))}
+              </Pie>
+              <Tooltip />
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="grid grid-3 gap-3 mt-4">
+            <div className="text-center">
+              <CheckCircle size={20} style={{ margin: '0 auto 4px', color: '#10b981' }} />
+              <div style={{ fontSize: '20px', fontWeight: '700' }}>{analytics.passedSubmissions}</div>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Passed</div>
+            </div>
+            <div className="text-center">
+              <XCircle size={20} style={{ margin: '0 auto 4px', color: '#ef4444' }} />
+              <div style={{ fontSize: '20px', fontWeight: '700' }}>{analytics.failedSubmissions}</div>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Failed</div>
+            </div>
+            <div className="text-center">
+              <Clock size={20} style={{ margin: '0 auto 4px', color: '#f59e0b' }} />
+              <div style={{ fontSize: '20px', fontWeight: '700' }}>{analytics.partialSubmissions}</div>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Partial</div>
+            </div>
           </div>
         </div>
 
-        {/* Assignment Performance */}
+        {/* Language Usage */}
         <div className="card">
-          <h2 className="mb-4">Student Performance Distribution</h2>
+          <h2 className="mb-4">Language Usage</h2>
           <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={leaderboard.slice(0, 10)}>
+            <BarChart data={languageData}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="studentId" />
+              <XAxis dataKey="name" />
               <YAxis />
               <Tooltip />
-              <Bar dataKey="avgScore" fill="#007bff" />
+              <Bar dataKey="value" fill="#3b82f6" />
             </BarChart>
           </ResponsiveContainer>
         </div>
       </div>
 
-      {/* Submission Overview */}
+      {/* Assignment Performance */}
       <div className="card mt-6">
-        <h2 className="mb-4">Submission Overview</h2>
+        <h2 className="mb-4">Assignment Performance Overview</h2>
         <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={leaderboard}>
+          <BarChart data={analytics.assignmentStats}>
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="studentId" />
-            <YAxis />
+            <XAxis dataKey="name" />
+            <YAxis yAxisId="left" />
+            <YAxis yAxisId="right" orientation="right" />
             <Tooltip />
-            <Bar dataKey="submissions" fill="#28a745" />
+            <Legend />
+            <Bar yAxisId="left" dataKey="submissions" fill="#10b981" name="Submissions" />
+            <Bar yAxisId="right" dataKey="avgScore" fill="#3b82f6" name="Avg Score (%)" />
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -183,19 +232,19 @@ const Analytics = ({ user }) => {
           <div className="grid gap-3">
             <div className="flex justify-between">
               <span>Total Students:</span>
-              <strong>{metrics.totalStudents}</strong>
+              <strong>{analytics.uniqueStudents}</strong>
             </div>
             <div className="flex justify-between">
               <span>Total Assignments:</span>
-              <strong>{metrics.totalAssignments}</strong>
+              <strong>{analytics.totalAssignments}</strong>
             </div>
             <div className="flex justify-between">
               <span>Total Submissions:</span>
-              <strong>{metrics.totalSubmissions}</strong>
+              <strong>{analytics.totalSubmissions}</strong>
             </div>
             <div className="flex justify-between">
               <span>Average Score:</span>
-              <strong>{metrics.avgScore}%</strong>
+              <strong>{analytics.avgScore}%</strong>
             </div>
           </div>
         </div>
@@ -204,20 +253,20 @@ const Analytics = ({ user }) => {
           <h3 className="mb-4">Performance Insights</h3>
           <div className="grid gap-3">
             <div className="flex justify-between">
-              <span>Top Score:</span>
-              <strong>{leaderboard[0]?.avgScore || 0}%</strong>
+              <span>Success Rate:</span>
+              <strong>{analytics.totalSubmissions > 0 ? Math.round((analytics.passedSubmissions / analytics.totalSubmissions) * 100) : 0}%</strong>
             </div>
             <div className="flex justify-between">
-              <span>Active Students:</span>
-              <strong>{leaderboard.length}</strong>
+              <span>Avg Submissions/Assignment:</span>
+              <strong>{analytics.totalAssignments > 0 ? Math.round(analytics.totalSubmissions / analytics.totalAssignments) : 0}</strong>
             </div>
             <div className="flex justify-between">
-              <span>Avg Submissions per Student:</span>
-              <strong>{leaderboard.length > 0 ? Math.round(leaderboard.reduce((sum, s) => sum + s.submissions, 0) / leaderboard.length) : 0}</strong>
+              <span>Most Used Language:</span>
+              <strong>{languageData[0]?.name || 'N/A'}</strong>
             </div>
             <div className="flex justify-between">
-              <span>Students Above 80%:</span>
-              <strong>{leaderboard.filter(s => s.avgScore >= 80).length}</strong>
+              <span>Completion Rate:</span>
+              <strong>{analytics.totalSubmissions > 0 ? Math.round(((analytics.passedSubmissions + analytics.partialSubmissions) / analytics.totalSubmissions) * 100) : 0}%</strong>
             </div>
           </div>
         </div>

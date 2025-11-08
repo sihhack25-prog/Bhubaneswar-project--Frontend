@@ -77,9 +77,12 @@ const CreateAssignmentModal = ({ onClose, onSubmit }) => {
         test: []
       }
 
-      // Create mock user token if not exists
-      if (!localStorage.getItem('token')) {
-        localStorage.setItem('token', 'mock-instructor-token')
+      // Ensure we have a valid token
+      let token = localStorage.getItem('token')
+      if (!token) {
+        // Create a proper JWT token for mock instructor
+        token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJtb2NrLWluc3RydWN0b3IiLCJyb2xlIjoiaW5zdHJ1Y3RvciJ9.mock-signature'
+        localStorage.setItem('token', token)
       }
 
       const formDataToSend = new FormData()
@@ -92,7 +95,7 @@ const CreateAssignmentModal = ({ onClose, onSubmit }) => {
       // Try backend first, fallback to mock
       try {
         const token = localStorage.getItem('token')
-        const response = await fetch('http://localhost:3001/api/assignments', {
+        const response = await fetch('http://localhost:3002/api/assignments', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`
@@ -102,6 +105,7 @@ const CreateAssignmentModal = ({ onClose, onSubmit }) => {
 
         const result = await response.json()
         if (result.success) {
+          alert('Assignment created successfully!')
           onSubmit(result.assignment)
           onClose()
           return
@@ -112,6 +116,7 @@ const CreateAssignmentModal = ({ onClose, onSubmit }) => {
 
       // Fallback to mock - use context
       const newAssignment = addAssignment(assignmentData)
+      alert('Assignment created successfully!')
       onSubmit(newAssignment)
       onClose()
     } catch (error) {

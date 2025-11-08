@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useDropzone } from 'react-dropzone'
 import Editor from '@monaco-editor/react'
-import { Upload, Download, CheckCircle, XCircle, Clock, FileText, Play, Code, Shield, ShieldOff } from 'lucide-react'
+import { Upload, Download, CheckCircle, XCircle, Clock, FileText, Play, Code, Shield, ShieldOff, Flag } from 'lucide-react'
 import { useAssignments } from '../contexts/AssignmentContext'
 import PythonProctor from '../components/PythonProctor'
+import ReportModal from '../components/ReportModal'
 
 const AssignmentDetails = ({ user }) => {
   const { id } = useParams()
@@ -26,6 +27,10 @@ const AssignmentDetails = ({ user }) => {
   const [proctorActive, setProctorActive] = useState(false)
   const [violations, setViolations] = useState([])
   const [terminated, setTerminated] = useState(false)
+  const [uploadedFiles, setUploadedFiles] = useState([])
+  const [showFileUpload, setShowFileUpload] = useState(false)
+  const [showReportModal, setShowReportModal] = useState(false)
+  const [submissionCount, setSubmissionCount] = useState(0)
 
   useEffect(() => {
     loadAssignment()
@@ -164,7 +169,10 @@ const AssignmentDetails = ({ user }) => {
       if (newViolations.length >= 3) {
         setTerminated(true)
         setTimeout(() => {
-          alert('Maximum violations reached! Assignment terminated.')
+          const shouldReport = confirm('Maximum violations reached! Assignment terminated.\n\nIf you believe this was wrongful termination due to system malfunction, would you like to report it?')
+          if (shouldReport) {
+            setShowReportModal(true)
+          }
           setProctorActive(false)
           setHasSubmitted(true)
         }, 100)
@@ -230,7 +238,7 @@ const AssignmentDetails = ({ user }) => {
     
     try {
       const token = localStorage.getItem('token')
-      const response = await fetch('http://localhost:3001/api/submit', {
+      const response = await fetch('http://localhost:3002/api/submit', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -255,6 +263,9 @@ const AssignmentDetails = ({ user }) => {
           success: result.score === 100,
           output: result.output
         })
+        
+        setSubmissionCount(result.submissionCount || 1)
+        alert(result.message || `Submission successful! Score: ${result.score}%`)
         
         setHasSubmitted(true)
         setPreviousSubmission({
@@ -337,11 +348,19 @@ const AssignmentDetails = ({ user }) => {
               fontSize: '14px',
               marginTop: '8px'
             }}>
-              ✅ Assignment Submitted Successfully - Score: {previousSubmission?.score}%
+              ✅ Assignment Submitted Successfully - Score: {previousSubmission?.score}% {submissionCount > 0 && `(Submission #${submissionCount})`}
             </div>
           )}
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={() => setShowReportModal(true)}
+            className="btn btn-warning"
+            style={{ fontSize: '12px', padding: '8px 12px' }}
+          >
+            <Flag size={14} />
+            Report Issue
+          </button>
           <button
             onClick={toggleProctor}
             className={`btn ${proctorActive ? 'btn-danger' : 'btn-success'}`}
@@ -363,7 +382,7 @@ const AssignmentDetails = ({ user }) => {
         <div className="card mb-4" style={{backgroundColor: '#fff3cd', border: '1px solid #ffeaa7'}}>
           <h4 style={{color: '#856404'}}>🛡️ Secure Assignment Mode</h4>
           <p style={{color: '#856404', margin: '5px 0'}}>Camera monitoring • Full-screen enforced • Copy/paste disabled</p>
-          <p style={{color: '#856404', fontSize: '12px'}}>Violations: {Math.min(violations.length, 3)}/3</p>
+          <p style={{color: '#856404', fontSize: '12px'}}>Violations: {Math.min(violations.length, 3)}/3 • Submissions: {submissionCount}</p>
         </div>
       )}
 
@@ -420,6 +439,14 @@ const AssignmentDetails = ({ user }) => {
                     {isTesting ? 'Testing...' : 'Test All Cases'}
                   </button>
                   <button
+                    onClick={() => setShowFileUpload(!showFileUpload)}
+                    disabled={hasSubmitted || terminated}
+                    className="btn btn-secondary"
+                  >
+                    <Upload size={16} />
+                    Upload File
+                  </button>
+                  <button
                     onClick={handleSubmit}
                     disabled={isSubmitting || hasSubmitted || terminated}
                     className="btn btn-success"
@@ -428,6 +455,66 @@ const AssignmentDetails = ({ user }) => {
                   </button>
                 </div>
               </div>
+              
+              {showFileUpload && (
+                <div style={{ padding: '16px', borderBottom: '1px solid var(--border)', backgroundColor: 'var(--bg-secondary)' }}>
+                  <div style={{
+                    border: '2px dashed var(--border)',
+                    borderRadius: '8px',
+                    padding: '20px',
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    backgroundColor: 'transparent'
+                  }}>
+                    <input type="file" accept=".js,.py,.java,.cpp,.txt" onChange={(e) => {
+                      const file = e.target.files[0]
+                      if (file) {
+                        setUploadedFiles(prev => [...prev, file])
+                        const reader = new FileReader()
+                        reader.onload = () => {
+                          setCode(reader.result)
+                          const ext = file.name.split('.').pop().toLowerCase()
+                          const langMap = { 'js': 'javascript', 'py': 'python', 'java': 'java', 'cpp': 'cpp' }
+                          if (langMap[ext]) setSelectedLanguage(langMap[ext])
+                        }
+                        reader.readAsText(file)
+                      }
+                    }} style={{ display: 'none' }} id="file-upload" />
+                    <label htmlFor="file-upload" style={{ cursor: 'pointer' }}>
+                      <Upload size={24} style={{ margin: '0 auto 8px', color: 'var(--text-secondary)' }} />
+                      <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Click to select code files</p>
+                      <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>Supports: .js, .py, .java, .cpp, .txt</p>
+                    </label>
+                  </div>
+                  {uploadedFiles.length > 0 && (
+                    <div style={{ marginTop: '12px' }}>
+                      <h4 style={{ fontSize: '14px', marginBottom: '8px' }}>Uploaded Files:</h4>
+                      <div className="grid gap-2">
+                        {uploadedFiles.map((file, index) => (
+                          <div key={index} className="flex justify-between items-center" style={{
+                            padding: '8px 12px',
+                            backgroundColor: 'var(--bg-tertiary)',
+                            borderRadius: '4px',
+                            fontSize: '14px'
+                          }}>
+                            <div className="flex items-center gap-2">
+                              <FileText size={16} />
+                              <span>{file.name}</span>
+                              <span style={{ color: 'var(--text-secondary)' }}>({(file.size / 1024).toFixed(1)} KB)</span>
+                            </div>
+                            <button
+                              onClick={() => setUploadedFiles(prev => prev.filter((_, i) => i !== index))}
+                              style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer' }}
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
               
               <Editor
                 height="400px"
@@ -462,7 +549,19 @@ const AssignmentDetails = ({ user }) => {
 
         <div>
           <div className="card">
-            <h3 className="mb-4">Test Cases</h3>
+            <div className="flex justify-between items-center mb-4">
+              <h3>Test Cases</h3>
+              <div className="flex gap-2">
+                <button className="btn btn-secondary" style={{ fontSize: '12px', padding: '6px 12px' }}>
+                  <Download size={14} />
+                  Sample Input
+                </button>
+                <button className="btn btn-secondary" style={{ fontSize: '12px', padding: '6px 12px' }}>
+                  <FileText size={14} />
+                  Template
+                </button>
+              </div>
+            </div>
             <div className="grid gap-2">
               {(assignment.test || []).map((testCase, index) => (
                 <div key={index} className="flex justify-between items-center"
@@ -475,8 +574,20 @@ const AssignmentDetails = ({ user }) => {
                 </div>
               ))}
             </div>
-            <div className="mt-4" style={{ textAlign: 'center', fontSize: '18px', fontWeight: 'bold', color: 'var(--accent-primary)' }}>
-              Total: {(assignment.test || []).length * 10} points
+            <div className="mt-4">
+              <div style={{ textAlign: 'center', fontSize: '18px', fontWeight: 'bold', color: 'var(--accent-primary)', marginBottom: '12px' }}>
+                Total: {(assignment.test || []).length * 10} points
+              </div>
+              <div className="grid grid-2 gap-3" style={{ fontSize: '14px' }}>
+                <div className="text-center" style={{ padding: '8px', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px' }}>
+                  <div style={{ fontWeight: 'bold' }}>Time Limit</div>
+                  <div style={{ color: 'var(--text-secondary)' }}>2 seconds</div>
+                </div>
+                <div className="text-center" style={{ padding: '8px', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px' }}>
+                  <div style={{ fontWeight: 'bold' }}>Memory Limit</div>
+                  <div style={{ color: 'var(--text-secondary)' }}>256 MB</div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -553,6 +664,14 @@ const AssignmentDetails = ({ user }) => {
           )}
         </div>
       </div>
+      
+      {showReportModal && (
+        <ReportModal
+          onClose={() => setShowReportModal(false)}
+          assignmentId={assignment._id || assignment.id}
+          assignmentName={assignment.name || assignment.main?.name || 'Assignment'}
+        />
+      )}
     </div>
   )
 }

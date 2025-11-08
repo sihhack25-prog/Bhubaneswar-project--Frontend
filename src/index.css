@@ -467,3 +467,155 @@ body::before {
   background: var(--bg-secondary);
   color: var(--text-primary);
 }
+
+/* File Upload Styles */
+.file-upload-zone {
+  border: 2px dashed var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.file-upload-zone:hover {
+  border-color: var(--accent-primary);
+  background-color: var(--bg-secondary);
+}
+
+.file-upload-zone.drag-active {
+  border-color: var(--success);
+  background-color: rgba(16, 185, 129, 0.1);
+}
+
+/* Enhanced Grid System */
+.grid-auto {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1rem;
+}
+
+.grid-5 {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 1rem;
+}
+
+.grid-6 {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 1rem;
+}
+
+/* Status Indicators */
+.status-passed {
+  color: var(--success);
+  background-color: rgba(16, 185, 129, 0.1);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.status-failed {
+  color: var(--danger);
+  background-color: rgba(239, 68, 68, 0.1);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.status-partial {
+  color: var(--warning);
+  background-color: rgba(245, 158, 11, 0.1);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Enhanced Metric Cards */
+.metric-card.card-gradient {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.metric-card.card-gradient .metric-value,
+.metric-card.card-gradient .metric-label {
+  color: white;
+}
+
+.metric-card.card-success {
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+  color: white;
+}
+
+.metric-card.card-success .metric-value,
+.metric-card.card-success .metric-label {
+  color: white;
+}
+
+.metric-card.card-warning {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  color: white;
+}
+
+.metric-card.card-warning .metric-value,
+.metric-card.card-warning .metric-label {
+  color: white;
+}
+
+.metric-card.card-student {
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  color: white;
+}
+
+.metric-card.card-student .metric-value,
+.metric-card.card-student .metric-label {
+  color: white;
+}
+
+/* Pulse Animation */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.pulse {
+  animation: pulse 2s infinite;
+}
+
+/* Enhanced Responsive Design */
+@media (max-width: 768px) {
+  .grid-5 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .grid-6 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  
+  .metric-card {
+    padding: 16px;
+  }
+  
+  .metric-value {
+    font-size: 2rem;
+  }
+  
+  .container {
+    padding: 1rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .grid-5,
+  .grid-6 {
+    grid-template-columns: 1fr;
+  }
+  
+  .metric-value {
+    font-size: 1.8rem;
+  }
+}

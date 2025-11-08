@@ -48,23 +48,10 @@ const EnhancedLogin = ({ setUser }) => {
             return
           }
         } catch (error) {
-          // Fallback to hardcoded credentials if backend unavailable
-          if (formData.email === 'admin@digitalTA.com' && formData.password === 'SecureAdmin2024!') {
-            const adminUser = {
-              id: 'admin',
-              name: 'Administrator',
-              email: formData.email,
-              role: 'admin'
-            }
-            setUser(adminUser)
-            localStorage.setItem('token', 'admin-token-' + Date.now())
-            navigate('/admin')
-            return
-          } else {
-            setError('Invalid admin credentials')
-            setLoading(false)
-            return
-          }
+          console.error('Admin login error:', error)
+          setError('Admin login failed. Please check your credentials.')
+          setLoading(false)
+          return
         }
       }
       
@@ -108,8 +95,8 @@ const EnhancedLogin = ({ setUser }) => {
       }
 
     } catch (error) {
-      setError('Login failed. Please try again.')
-    } finally {
+      console.error('Login error:', error)
+      setError('Login failed. Please check your credentials and try again.')
       setLoading(false)
     }
   }

@@ -15,30 +15,44 @@ const MySubmissions = ({ user }) => {
 
   const fetchSubmissions = async () => {
     try {
-      const token = localStorage.getItem('token')
-      if (!token) {
-        setLoading(false)
-        return
+      // Fetch all assignments first to get assignment names
+      const assignmentsRes = await fetch('http://localhost:3001/api/assignments')
+      let assignmentMap = {}
+      if (assignmentsRes.ok) {
+        const assignmentsData = await assignmentsRes.json()
+        const assignments = Array.isArray(assignmentsData) ? assignmentsData : assignmentsData.assignments || []
+        assignments.forEach(assignment => {
+          assignmentMap[assignment._id] = assignment.main?.name || assignment.name || 'Untitled Assignment'
+        })
       }
 
-      const response = await fetch('http://localhost:3001/api/submissions', {
-        headers: {
-          'Authorization': `Bearer ${token}`
+      // Fetch all submissions from all assignments
+      let allSubmissions = []
+      for (const assignmentId in assignmentMap) {
+        try {
+          const subRes = await fetch(`http://localhost:3001/api/assignments/${assignmentId}/submissions`)
+          if (subRes.ok) {
+            const subData = await subRes.json()
+            if (subData.success && subData.submissions) {
+              const enrichedSubs = subData.submissions.map(sub => ({
+                ...sub,
+                assignmentTitle: assignmentMap[assignmentId],
+                assignmentId: assignmentId,
+                maxScore: 100,
+                submittedAt: new Date(sub.submittedAt),
+                testsPassed: sub.testResults?.filter(t => t.passed).length || 0,
+                totalTests: sub.testResults?.length || 0,
+                executionTime: sub.executionTime || Math.floor(Math.random() * 100) + 20
+              }))
+              allSubmissions.push(...enrichedSubs)
+            }
+          }
+        } catch (err) {
+          console.error(`Error fetching submissions for ${assignmentId}:`, err)
         }
-      })
-      
-      const data = await response.json()
-      if (data.success) {
-        const enrichedSubmissions = data.submissions.map(submission => ({
-          ...submission,
-          maxScore: 100,
-          submittedAt: new Date(submission.submittedAt),
-          testsPassed: submission.testResults?.filter(t => t.passed).length || 0,
-          totalTests: submission.testResults?.length || 0,
-          executionTime: Math.floor(Math.random() * 100) + 20 // Mock execution time
-        }))
-        setSubmissions(enrichedSubmissions)
       }
+      
+      setSubmissions(allSubmissions)
     } catch (error) {
       console.error('Error fetching submissions:', error)
     } finally {
@@ -48,7 +62,12 @@ const MySubmissions = ({ user }) => {
 
   const fetchAssignments = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/assignments')
+      const response = await fetch('http://localhost:3001/api/assignments', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
       const data = await response.json()
       if (data.success) {
         setAssignments(data.assignments)
@@ -59,13 +78,12 @@ const MySubmissions = ({ user }) => {
   }
 
   const getStatusIcon = (status, score) => {
-    if (status === 'submitted') return <Clock size={16} style={{ color: 'var(--warning)' }} />
-    if (status === 'graded') {
+    if (status === 'Passed' || status === 'Failed' || status === 'Partial') {
       return score >= 80 ? 
-        <CheckCircle size={16} style={{ color: 'var(--success)' }} /> :
-        <XCircle size={16} style={{ color: 'var(--danger)' }} />
+        <CheckCircle size={16} style={{ color: '#10b981' }} /> :
+        <XCircle size={16} style={{ color: '#ef4444' }} />
     }
-    return <Clock size={16} style={{ color: 'var(--text-secondary)' }} />
+    return <Clock size={16} style={{ color: '#f59e0b' }} />
   }
 
   const getScoreColor = (score) => {
@@ -79,122 +97,142 @@ const MySubmissions = ({ user }) => {
     const title = submission.assignmentTitle || 'Unknown Assignment'
     const matchesSearch = title.toLowerCase().includes(searchTerm.toLowerCase())
     if (filterStatus === 'all') return matchesSearch
-    return matchesSearch && submission.status === filterStatus
+    if (filterStatus === 'graded') return matchesSearch && (submission.status === 'Passed' || submission.status === 'Failed' || submission.status === 'Partial')
+    if (filterStatus === 'submitted') return matchesSearch && (!submission.status || submission.status === 'submitted')
+    return matchesSearch
   })
 
   const totalSubmissions = submissions.length
-  const gradedSubmissions = submissions.filter(s => s.status === 'graded')
+  const gradedSubmissions = submissions.filter(s => s.status === 'Passed' || s.status === 'Failed' || s.status === 'Partial')
   const averageScore = gradedSubmissions.length > 0 
-    ? Math.round(gradedSubmissions.reduce((sum, s) => sum + s.score, 0) / gradedSubmissions.length)
+    ? Math.round(gradedSubmissions.reduce((sum, s) => sum + (s.finalScore || s.score || 0), 0) / gradedSubmissions.length)
     : 0
-  const perfectScores = gradedSubmissions.filter(s => s.score === 100).length
+  const perfectScores = gradedSubmissions.filter(s => (s.finalScore || s.score || 0) === 100).length
 
   return (
     <div>
       {/* Header */}
-      <div className="mb-6">
-        <h1 style={{ fontSize: '2.5rem', fontWeight: '800', marginBottom: '8px' }}>📝 My Submissions</h1>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '16px' }}>Track your progress and review past submissions</p>
+      <div style={{ marginBottom: '2rem' }}>
+        <h1 style={{ 
+          fontSize: '2rem', 
+          fontWeight: 'bold', 
+          marginBottom: '0.5rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem'
+        }}>
+          📝 My Submissions
+        </h1>
+        <p style={{ color: '#6b7280' }}>Track your progress and review past submissions</p>
       </div>
 
       {/* Statistics Cards */}
-      <div className="grid grid-4 mb-6">
-        <div className="metric-card card-student">
-          <Code size={32} style={{ margin: '0 auto 8px', color: 'white' }} />
-          <div className="metric-value" style={{ color: 'white' }}>{totalSubmissions}</div>
-          <div className="metric-label" style={{ color: 'rgba(255,255,255,0.9)' }}>Total Submissions</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+        <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+            <Code size={20} color="#3b82f6" />
+            <span style={{ fontWeight: '600' }}>Total Submissions</span>
+          </div>
+          <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#3b82f6' }}>{totalSubmissions}</div>
         </div>
         
-        <div className="metric-card card-success">
-          <TrendingUp size={32} style={{ margin: '0 auto 8px', color: 'white' }} />
-          <div className="metric-value" style={{ color: 'white' }}>{averageScore}%</div>
-          <div className="metric-label" style={{ color: 'rgba(255,255,255,0.9)' }}>Average Score</div>
+        <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+            <TrendingUp size={20} color="#10b981" />
+            <span style={{ fontWeight: '600' }}>Average Score</span>
+          </div>
+          <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#10b981' }}>{averageScore}%</div>
         </div>
         
-        <div className="metric-card card-warning">
-          <CheckCircle size={32} style={{ margin: '0 auto 8px', color: 'white' }} />
-          <div className="metric-value" style={{ color: 'white' }}>{perfectScores}</div>
-          <div className="metric-label" style={{ color: 'rgba(255,255,255,0.9)' }}>Perfect Scores</div>
+        <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+            <CheckCircle size={20} color="#f59e0b" />
+            <span style={{ fontWeight: '600' }}>Perfect Scores</span>
+          </div>
+          <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#f59e0b' }}>{perfectScores}</div>
         </div>
         
-        <div className="metric-card card-gradient">
-          <Calendar size={32} style={{ margin: '0 auto 8px', color: 'white' }} />
-          <div className="metric-value" style={{ color: 'white' }}>{gradedSubmissions.length}</div>
-          <div className="metric-label" style={{ color: 'rgba(255,255,255,0.9)' }}>Graded</div>
+        <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+            <Calendar size={20} color="#8b5cf6" />
+            <span style={{ fontWeight: '600' }}>Graded</span>
+          </div>
+          <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#8b5cf6' }}>{gradedSubmissions.length}</div>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="card mb-6">
-        <div className="flex justify-between items-center gap-4">
-          <div className="flex items-center gap-4" style={{ flex: 1 }}>
-            <div style={{ position: 'relative', flex: 1, maxWidth: '400px' }}>
-              <Search size={20} style={{ 
-                position: 'absolute', 
-                left: '12px', 
-                top: '50%', 
-                transform: 'translateY(-50%)',
-                color: 'var(--text-secondary)'
-              }} />
-              <input
-                type="text"
-                placeholder="Search submissions..."
-                className="form-input"
-                style={{ paddingLeft: '44px' }}
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-            
-            <select
-              className="form-input"
-              style={{ width: 'auto', minWidth: '150px' }}
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-            >
-              <option value="all">All Status</option>
-              <option value="graded">Graded</option>
-              <option value="submitted">Pending</option>
-            </select>
-          </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', gap: '1rem' }}>
+        <div style={{ position: 'relative', flex: 1, maxWidth: '400px' }}>
+          <Search size={20} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#6b7280' }} />
+          <input
+            type="text"
+            placeholder="Search submissions..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '12px 12px 12px 44px',
+              borderRadius: '8px',
+              border: '2px solid #e5e7eb',
+              fontSize: '16px'
+            }}
+          />
         </div>
+        
+        <select
+          value={filterStatus}
+          onChange={(e) => setFilterStatus(e.target.value)}
+          style={{
+            padding: '12px 16px',
+            borderRadius: '8px',
+            border: '2px solid #e5e7eb',
+            fontSize: '16px',
+            minWidth: '150px'
+          }}
+        >
+          <option value="all">All Status</option>
+          <option value="graded">Graded</option>
+          <option value="submitted">Pending</option>
+        </select>
       </div>
 
       {/* Submissions List */}
-      <div className="card">
-        <div className="mb-4">
-          <h2 style={{ fontSize: '1.5rem', fontWeight: '700' }}>Submission History ({filteredSubmissions.length})</h2>
+      <div style={{ background: 'white', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
+        <div style={{ padding: '1.5rem', borderBottom: '1px solid #e5e7eb' }}>
+          <h2 style={{ fontSize: '1.25rem', fontWeight: '600', margin: 0 }}>Submission History ({filteredSubmissions.length})</h2>
         </div>
+        <div style={{ padding: '1.5rem' }}>
 
-        {loading ? (
-          <div className="text-center" style={{ padding: '60px' }}>
-            <div className="loading-spinner" style={{ margin: '0 auto' }}></div>
-            <p style={{ marginTop: '16px' }}>Loading submissions...</p>
-          </div>
-        ) : filteredSubmissions.length === 0 ? (
-          <div className="text-center" style={{ padding: '60px', color: 'var(--text-secondary)' }}>
-            <Code size={48} style={{ margin: '0 auto 16px', opacity: 0.5 }} />
-            <p>No submissions found matching your criteria.</p>
-          </div>
-        ) : (
-          <div className="grid gap-4">
-            {filteredSubmissions.map(submission => (
-              <div key={submission.id} className="card fade-in" style={{ 
-                margin: 0,
-                background: 'var(--bg-secondary)',
-                border: '1px solid var(--border)',
-                cursor: 'pointer',
-                transition: 'all 0.3s ease'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-2px)'
-                e.currentTarget.style.boxShadow = '0 8px 25px var(--shadow)'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)'
-                e.currentTarget.style.boxShadow = '0 4px 6px var(--shadow)'
-              }}
-              >
+          {loading ? (
+            <div style={{ padding: '3rem', textAlign: 'center' }}>
+              <div style={{ fontSize: '1.2rem' }}>Loading submissions...</div>
+            </div>
+          ) : filteredSubmissions.length === 0 ? (
+            <div style={{ padding: '3rem', textAlign: 'center', color: '#6b7280' }}>
+              <Code size={48} style={{ margin: '0 auto 1rem', opacity: 0.5 }} />
+              <p>No submissions found matching your criteria.</p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {filteredSubmissions.map((submission, index) => (
+                <div key={submission._id || submission.id || index} style={{ 
+                  background: '#f9fafb',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '8px',
+                  padding: '1.5rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)'
+                  e.currentTarget.style.boxShadow = '0 8px 25px rgba(0,0,0,0.1)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)'
+                  e.currentTarget.style.boxShadow = 'none'
+                }}
+                >
                 <div className="flex justify-between items-start">
                   <div style={{ flex: 1 }}>
                     <div className="flex items-center gap-3 mb-3">
@@ -202,31 +240,36 @@ const MySubmissions = ({ user }) => {
                       <h3 style={{ fontSize: '18px', fontWeight: '600', margin: 0 }}>
                         {submission.assignmentTitle}
                       </h3>
-                      <span className={`status-badge ${
-                        submission.status === 'graded' ? 'status-graded' : 'status-submitted'
-                      }`}>
-                        {submission.status === 'graded' ? 'Graded' : 'Pending'}
+                      <span style={{
+                        padding: '0.25rem 0.75rem',
+                        borderRadius: '9999px',
+                        fontSize: '0.75rem',
+                        fontWeight: '500',
+                        background: (submission.status === 'Passed' || submission.status === 'Failed' || submission.status === 'Partial') ? '#dcfce7' : '#fef3c7',
+                        color: (submission.status === 'Passed' || submission.status === 'Failed' || submission.status === 'Partial') ? '#166534' : '#92400e'
+                      }}>
+                        {(submission.status === 'Passed' || submission.status === 'Failed' || submission.status === 'Partial') ? submission.status : 'Pending'}
                       </span>
                     </div>
                     
-                    <div className="flex items-center gap-6 mb-3" style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
-                      <div className="flex items-center gap-1">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', marginBottom: '0.75rem', fontSize: '14px', color: '#6b7280' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                         <Calendar size={14} />
                         <span>Submitted {submission.submittedAt.toLocaleDateString()}</span>
                       </div>
-                      <div className="flex items-center gap-1">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                         <Code size={14} />
                         <span>{submission.language}</span>
                       </div>
                       {submission.executionTime && (
-                        <div className="flex items-center gap-1">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                           <Clock size={14} />
                           <span>{submission.executionTime}ms</span>
                         </div>
                       )}
                     </div>
 
-                    {submission.status === 'graded' && (
+                    {(submission.status === 'Passed' || submission.status === 'Failed' || submission.status === 'Partial') && (
                       <div className="flex items-center gap-4">
                         <div style={{ 
                           padding: '8px 16px',
@@ -253,7 +296,7 @@ const MySubmissions = ({ user }) => {
                     )}
                   </div>
 
-                  {submission.status === 'graded' && (
+                  {(submission.status === 'Passed' || submission.status === 'Failed' || submission.status === 'Partial') && (
                     <div className="text-center" style={{ minWidth: '120px' }}>
                       <div style={{ 
                         fontSize: '2.5rem', 
@@ -261,10 +304,10 @@ const MySubmissions = ({ user }) => {
                         color: getScoreColor(submission.score),
                         marginBottom: '4px'
                       }}>
-                        {submission.score}%
+                        {submission.finalScore || submission.score || 0}%
                       </div>
                       <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                        {submission.score}/{submission.maxScore} points
+                        {submission.finalScore || submission.score || 0}/{submission.maxScore} points
                       </div>
                       
                       {/* Progress bar */}
@@ -277,7 +320,7 @@ const MySubmissions = ({ user }) => {
                         overflow: 'hidden'
                       }}>
                         <div style={{
-                          width: `${submission.score}%`,
+                          width: `${submission.finalScore || submission.score || 0}%`,
                           height: '100%',
                           background: getScoreColor(submission.score),
                           borderRadius: '3px',
@@ -287,7 +330,7 @@ const MySubmissions = ({ user }) => {
                     </div>
                   )}
 
-                  {submission.status === 'submitted' && (
+                  {(!submission.status || submission.status === 'submitted') && (
                     <div className="text-center" style={{ minWidth: '120px' }}>
                       <div className="loading-spinner" style={{ margin: '0 auto 8px' }}></div>
                       <div style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
@@ -297,9 +340,10 @@ const MySubmissions = ({ user }) => {
                   )}
                 </div>
               </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

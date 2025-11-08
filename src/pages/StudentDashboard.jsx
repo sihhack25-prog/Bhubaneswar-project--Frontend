@@ -7,15 +7,23 @@ const StudentDashboard = ({ user }) => {
   const { assignments: contextAssignments, submissions, getSubmissionsByUser, getStats } = useAssignments()
   const [filter, setFilter] = useState('all')
   const [assignments, setAssignments] = useState([])
+  const [stats, setStats] = useState({ openAssignments: 0, completedAssignments: 0, averageScore: 0 })
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     fetchAssignments()
+    fetchStats()
   }, [])
 
   const fetchAssignments = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/assignments')
+      const response = await fetch('http://localhost:3001/api/assignments', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
       const data = await response.json()
       if (data.success && data.assignments.length > 0) {
         setAssignments(data.assignments)
@@ -23,10 +31,35 @@ const StudentDashboard = ({ user }) => {
         setAssignments(contextAssignments)
       }
     } catch (error) {
-      console.log('Backend not available, using context data')
+      console.error('Error fetching assignments:', error)
       setAssignments(contextAssignments)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchStats = async () => {
+    try {
+      const token = localStorage.getItem('token')
+      const response = await fetch('http://localhost:3001/api/dashboard/stats', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      const data = await response.json()
+      if (data.success) {
+        setStats(data.stats)
+      }
+    } catch (error) {
+      console.error('Error fetching stats:', error)
+      setStats({
+        openAssignments: contextAssignments.length,
+        completedAssignments: userSubmissions.length,
+        averageScore: userSubmissions.length > 0 ? Math.round(userSubmissions.reduce((acc, sub) => acc + (sub.score || 0), 0) / userSubmissions.length) : 0
+      })
     }
   }
 
@@ -80,33 +113,62 @@ const StudentDashboard = ({ user }) => {
       <div style={{ padding: '2rem', position: 'relative', zIndex: 1 }}>
         <div className="flex justify-between items-center mb-4">
           <h1>Student Dashboard</h1>
-          <Link to="/editor" className="btn btn-primary">
-            Open Live Editor
-          </Link>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button
+              onClick={() => {
+                fetchAssignments()
+                fetchStats()
+              }}
+              className="btn btn-secondary"
+              style={{ fontSize: '14px' }}
+            >
+              🔄 Refresh
+            </button>
+            <Link to="/editor" className="btn btn-primary">
+              Open Live Editor
+            </Link>
+          </div>
         </div>
 
       <div className="grid grid-3 mb-4">
-        <div className="metric-card card-gradient">
+        <div className="card" style={{ 
+          textAlign: 'center', 
+          padding: '1.5rem',
+        
+          color: 'white',
+          border: 'none'
+        }}>
           <Code size={32} style={{ margin: '0 auto 8px' }} />
-          <div className="metric-value">
-            {enrichedAssignments.filter(a => a.status === 'open').length}
+          <div className="metric-value" style={{ fontSize: '2rem', fontWeight: 'bold', margin: '8px 0' }}>
+            {stats.openAssignments}
           </div>
-          <div className="metric-label">Open Assignments</div>
+          <div className="metric-label" style={{ fontSize: '0.9rem', opacity: 0.9 }}>Open Assignments</div>
         </div>
-        <div className="metric-card card-warning">
+        <div className="card" style={{ 
+          textAlign: 'center', 
+          padding: '1.5rem',
+         
+          color: 'white',
+          border: 'none'
+        }}>
           <Clock size={32} style={{ margin: '0 auto 8px' }} />
-          <div className="metric-value">
-            {enrichedAssignments.filter(a => a.status === 'completed').length}
+          <div className="metric-value" style={{ fontSize: '2rem', fontWeight: 'bold', margin: '8px 0' }}>
+            {stats.completedAssignments}
           </div>
-          <div className="metric-label">Completed</div>
+          <div className="metric-label" style={{ fontSize: '0.9rem', opacity: 0.9 }}>Completed</div>
         </div>
-        <div className="metric-card card-success">
+        <div className="card" style={{ 
+          textAlign: 'center', 
+          padding: '1.5rem',
+      
+          color: 'white',
+          border: 'none'
+        }}>
           <TrendingUp size={32} style={{ margin: '0 auto 8px' }} />
-          <div className="metric-value">
-            {Math.round(enrichedAssignments.filter(a => a.score).reduce((sum, a) => sum + a.score, 0) / 
-             enrichedAssignments.filter(a => a.score).length) || 0}%
+          <div className="metric-value" style={{ fontSize: '2rem', fontWeight: 'bold', margin: '8px 0' }}>
+            {stats.averageScore}%
           </div>
-          <div className="metric-label">Average Score</div>
+          <div className="metric-label" style={{ fontSize: '0.9rem', opacity: 0.9 }}>Average Score</div>
         </div>
       </div>
 

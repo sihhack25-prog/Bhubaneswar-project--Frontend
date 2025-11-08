@@ -1,0 +1,16 @@
+{
+  "name": "redis-backend",
+  "version": "1.0.0",
+  "description": "Redis-based backend for load testing",
+  "main": "redis-backend.cjs",
+  "scripts": {
+    "start": "node redis-backend.cjs",
+    "dev": "nodemon redis-backend.cjs"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "bull": "^4.12.2",
+    "redis": "^3.1.2"
+  }
+}

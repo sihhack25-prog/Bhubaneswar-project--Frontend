@@ -20,14 +20,15 @@ const Login = ({ setUser }) => {
     setError('')
     
     try {
-      const response = await fetch('http://localhost:3001/api/auth/login', {
+      const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register'
+      const requestBody = isLogin 
+        ? { email: formData.email, password: formData.password }
+        : { name: formData.username, email: formData.email, password: formData.password, role: formData.role }
+      
+      const response = await fetch(`http://localhost:3002${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: formData.email, // Using email as username
-          password: formData.password,
-          role: formData.role
-        })
+        body: JSON.stringify(requestBody)
       })
       
       const data = await response.json()
@@ -37,7 +38,7 @@ const Login = ({ setUser }) => {
         setUser(data.user)
         navigate(data.user.role === 'instructor' ? '/instructor' : '/student')
       } else {
-        setError(data.error || 'Login failed')
+        setError(data.error || (isLogin ? 'Login failed' : 'Registration failed'))
       }
     } catch (error) {
       setError('Connection error. Please check if the backend server is running.')
@@ -263,7 +264,7 @@ const Login = ({ setUser }) => {
           fontSize: '14px'
         }}>
           <p>Secure • Fast • Reliable</p>
-          <p style={{ fontSize: '12px', marginTop: '8px' }}>Make sure backend server is running on port 3001</p>
+          <p style={{ fontSize: '12px', marginTop: '8px' }}>Make sure backend server is running on port 3002</p>
         </div>
       </div>
     </div>

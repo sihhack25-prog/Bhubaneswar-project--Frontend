@@ -170,7 +170,7 @@ function LandingPage() {
           <button 
             id="one" 
             className="key keypad__single keypad__single--left"
-            onClick={() => navigate('/login')}
+            // onClick={() => navigate('/login')}
           >
             <span className="key__mask">
               <span className="key__content">
@@ -182,7 +182,7 @@ function LandingPage() {
           <button 
             id="two" 
             className="key keypad__single"
-            onClick={() => navigate('/login')}
+            // onClick={() => navigate('/login')}
           >
             <span className="key__mask">
               <span className="key__content">

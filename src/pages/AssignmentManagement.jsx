@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
 import { Plus, Search, Filter, Edit, Trash2, Eye, Calendar, Users, BarChart3 } from 'lucide-react'
 import CreateAssignmentModal from '../components/CreateAssignmentModal'
+import { useAssignments } from '../contexts/AssignmentContext'
 
 const AssignmentManagement = () => {
   const [assignments, setAssignments] = useState([])
+  const [submissions, setSubmissions] = useState([])
   const [showModal, setShowModal] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
@@ -12,12 +14,20 @@ const AssignmentManagement = () => {
   useEffect(() => {
     fetchAssignments()
   }, [])
+  
+  useEffect(() => {
+    if (assignments.length > 0) {
+      fetchSubmissions()
+    }
+  }, [assignments])
 
   const fetchAssignments = async () => {
     try {
       const response = await fetch('http://localhost:3001/api/assignments')
       const data = await response.json()
-      if (data.success) {
+      if (Array.isArray(data)) {
+        setAssignments(data)
+      } else if (data.success && data.assignments) {
         setAssignments(data.assignments)
       }
     } catch (error) {
@@ -27,8 +37,44 @@ const AssignmentManagement = () => {
     }
   }
 
+  const fetchSubmissions = async () => {
+    try {
+      const allSubmissions = []
+      
+      // Fetch submissions for each assignment individually (like dashboard does)
+      for (const assignment of assignments) {
+        try {
+          const response = await fetch(`http://localhost:3001/api/assignments/${assignment._id}/submissions`)
+          if (response.ok) {
+            const data = await response.json()
+            if (data.success && data.submissions) {
+              allSubmissions.push(...data.submissions)
+            }
+          }
+        } catch (error) {
+          console.error(`Error fetching submissions for assignment ${assignment._id}:`, error)
+        }
+      }
+      
+      setSubmissions(allSubmissions)
+      console.log('Fetched dynamic submissions:', allSubmissions.length)
+    } catch (error) {
+      console.error('Error fetching submissions:', error)
+    }
+  }
+
+
+
+  const getAssignmentStats = (assignmentId) => {
+    const assignmentSubs = submissions.filter(s => String(s.assignmentId) === String(assignmentId))
+    const count = assignmentSubs.length
+    const avgScore = count > 0 
+      ? Math.round(assignmentSubs.reduce((sum, s) => sum + (s.finalScore || s.score || 0), 0) / count)
+      : 0
+    return { count, avgScore }
+  }
+
   const handleCreateAssignment = (newAssignment) => {
-    // Assignment creation is handled in the modal
     setAssignments([newAssignment, ...assignments])
     setShowModal(false)
   }
@@ -122,7 +168,7 @@ const AssignmentManagement = () => {
       {/* Assignment Table */}
       <div className="card">
         <div className="mb-4">
-          <h2 style={{ fontSize: '1.5rem', fontWeight: '700' }}>All Assignments ({filteredAssignments.length})</h2>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: '700' }}>All Assignments ({assignments.length})</h2>
         </div>
 
         {loading ? (
@@ -151,6 +197,7 @@ const AssignmentManagement = () => {
               <tbody>
                 {filteredAssignments.map(assignment => {
                   const status = getStatusBadge(assignment.deadline)
+                  const stats = getAssignmentStats(assignment._id)
                   return (
                     <tr key={assignment._id} style={{ 
                       borderBottom: '1px solid var(--border)',
@@ -179,17 +226,17 @@ const AssignmentManagement = () => {
                       <td style={{ padding: '16px', textAlign: 'center' }}>
                         <div className="flex items-center justify-center gap-1">
                           <Users size={16} style={{ color: 'var(--text-secondary)' }} />
-                          <span style={{ fontSize: '16px', fontWeight: '600' }}>{assignment.submissions || 0}</span>
+                          <span style={{ fontSize: '16px', fontWeight: '600' }}>{stats.count}</span>
                         </div>
                       </td>
                       <td style={{ padding: '16px', textAlign: 'center' }}>
                         <span style={{ 
                           fontSize: '16px', 
                           fontWeight: '700',
-                          color: assignment.avgScore >= 80 ? 'var(--success)' : 
-                                assignment.avgScore >= 60 ? 'var(--warning)' : 'var(--danger)'
+                          color: stats.avgScore >= 80 ? 'var(--success)' : 
+                                stats.avgScore >= 60 ? 'var(--warning)' : 'var(--danger)'
                         }}>
-                          {assignment.avgScore || 0}%
+                          {stats.avgScore}%
                         </span>
                       </td>
                       <td style={{ padding: '16px', textAlign: 'center' }}>

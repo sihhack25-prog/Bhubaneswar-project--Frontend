@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Calendar, Users, FileText, TrendingUp, Clock, CheckCircle, AlertTriangle, BarChart3, Shield } from 'lucide-react'
+import { Plus, Calendar, Users, FileText, TrendingUp, Clock, CheckCircle, AlertTriangle, BarChart3, Shield, Edit, Trash2, Eye, Play } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import CreateAssignmentModal from '../components/CreateAssignmentModal'
 import { useAssignments } from '../contexts/AssignmentContext'
@@ -27,7 +27,13 @@ const InstructorDashboard = () => {
 
   const fetchAssignments = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/assignments')
+      const response = await fetch('http://localhost:3001/api/assignments', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
       const data = await response.json()
       if (data.success && data.assignments.length > 0) {
         setAssignments(data.assignments)
@@ -35,7 +41,7 @@ const InstructorDashboard = () => {
         setAssignments(contextAssignments)
       }
     } catch (error) {
-      console.log('Backend not available, using context data')
+      console.error('Error fetching assignments:', error)
       setAssignments(contextAssignments)
     } finally {
       setLoading(false)
@@ -46,8 +52,13 @@ const InstructorDashboard = () => {
     try {
       const token = localStorage.getItem('token')
       const response = await fetch('http://localhost:3001/api/analytics', {
-        headers: { 'Authorization': `Bearer ${token}` }
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
       })
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
       const data = await response.json()
       if (data.success) {
         setAnalytics(data.analytics)
@@ -56,8 +67,8 @@ const InstructorDashboard = () => {
         setAnalytics({
           totalStudents: participants.length,
           totalInstructors: 1,
-          totalAssignments: stats.totalAssignments,
-          totalSubmissions: stats.totalSubmissions
+          totalAssignments: assignments.length || stats.totalAssignments,
+          totalSubmissions: submissions.length || stats.totalSubmissions
         })
       }
     } catch (error) {
@@ -65,15 +76,21 @@ const InstructorDashboard = () => {
       setAnalytics({
         totalStudents: participants.length,
         totalInstructors: 1,
-        totalAssignments: stats.totalAssignments,
-        totalSubmissions: stats.totalSubmissions
+        totalAssignments: assignments.length || stats.totalAssignments,
+        totalSubmissions: submissions.length || stats.totalSubmissions
       })
     }
   }
 
   const handleViewSubmissions = async (assignment) => {
     try {
-      const response = await fetch(`http://localhost:3001/api/assignments/${assignment._id || assignment.id}/submissions`)
+      const response = await fetch(`http://localhost:3001/api/assignments/${assignment._id || assignment.id}/submissions`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
       const data = await response.json()
       if (data.success) {
         setAssignmentSubmissions(data.submissions)
@@ -89,9 +106,39 @@ const InstructorDashboard = () => {
     setShowSubmissions(true)
   }
 
-  const handleCreateAssignment = (newAssignment) => {
+  const handleCreateAssignment = async (newAssignment) => {
     // Assignment creation is handled in the modal via context
     setShowModal(false)
+    // Refresh data after creation
+    await fetchAssignments()
+    await fetchAnalytics()
+  }
+
+  const handleEditAssignment = (assignment) => {
+    // Set the assignment to edit and open modal
+    setSelectedAssignment(assignment)
+    setShowModal(true)
+  }
+
+  const handleDeleteAssignment = async (assignmentId) => {
+    try {
+      const token = localStorage.getItem('token')
+      const response = await fetch(`http://localhost:3001/api/assignments/${assignmentId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      await fetchAssignments()
+      await fetchAnalytics()
+      alert('Assignment deleted successfully!')
+    } catch (error) {
+      console.error('Error deleting assignment:', error)
+      alert('Error deleting assignment')
+    }
   }
 
   return (
@@ -105,25 +152,37 @@ const InstructorDashboard = () => {
             <h1 style={{ fontSize: '2.5rem', fontWeight: '800', marginBottom: '8px' }}>Instructor Dashboard</h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '16px' }}>Manage assignments and track student progress</p>
           </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="btn btn-primary flex items-center gap-2"
-          style={{ padding: '16px 24px', fontSize: '16px' }}
-        >
-          <Plus size={20} />
-          Create Assignment
-        </button>
-      </div>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button
+              onClick={() => {
+                fetchAssignments()
+                fetchAnalytics()
+              }}
+              className="btn btn-secondary flex items-center gap-2"
+              style={{ padding: '16px 20px', fontSize: '14px' }}
+            >
+              🔄 Refresh
+            </button>
+            <button
+              onClick={() => setShowModal(true)}
+              className="btn btn-primary flex items-center gap-2"
+              style={{ padding: '16px 24px', fontSize: '16px' }}
+            >
+              <Plus size={20} />
+              Create Assignment
+            </button>
+          </div>
+        </div>
 
       {/* Quick Overview Cards */}
-      <div className="grid grid-4">
+      <div className="grid grid-2">
         <div className="metric-card card-instructor" style={{ position: 'relative', overflow: 'hidden' }}>
           <div style={{ position: 'absolute', top: '16px', right: '16px', opacity: 0.3 }}>
             <FileText size={40} />
           </div>
           <div style={{ position: 'relative', zIndex: 1 }}>
             <div className="metric-value" style={{ color: 'white', fontSize: '2.5rem' }}>{analytics.totalAssignments}</div>
-            <div className="metric-label" style={{ color: 'rgba(0, 0, 0, 0.9)' }}>Total Assignments</div>
+            <div className="metric-label" style={{ color: 'black' }}>Total Assignments</div>
           </div>
         </div>
         
@@ -133,27 +192,7 @@ const InstructorDashboard = () => {
           </div>
           <div style={{ position: 'relative', zIndex: 1 }}>
             <div className="metric-value" style={{ color: 'white', fontSize: '2.5rem' }}>{analytics.totalStudents}</div>
-            <div className="metric-label" style={{ color: 'rgba(0,0,0,0.9)' }}>Active Students</div>
-          </div>
-        </div>
-        
-        <div className="metric-card card-success" style={{ position: 'relative', overflow: 'hidden' }}>
-          <div style={{ position: 'absolute', top: '16px', right: '16px', opacity: 0.3 }}>
-            <TrendingUp size={40} />
-          </div>
-          <div style={{ position: 'relative', zIndex: 1 }}>
-            <div className="metric-value" style={{ color: 'white', fontSize: '2.5rem' }}>{analytics.totalSubmissions}</div>
-            <div className="metric-label" style={{ color: 'rgba(0,0,0,0.9)' }}>Total Submissions</div>
-          </div>
-        </div>
-        
-        <div className="metric-card card-warning" style={{ position: 'relative', overflow: 'hidden' }}>
-          <div style={{ position: 'absolute', top: '16px', right: '16px', opacity: 0.3 }}>
-            <Clock size={40} />
-          </div>
-          <div style={{ position: 'relative', zIndex: 1 }}>
-            <div className="metric-value" style={{ color: 'white', fontSize: '2.5rem' }}>{analytics.totalInstructors}</div>
-            <div className="metric-label" style={{ color: 'rgba(0,0,0,0.9)' }}> Total Instructors</div>
+            <div className="metric-label" style={{ color: 'white' }}>Active Students</div>
           </div>
         </div>
       </div>
@@ -197,27 +236,98 @@ const InstructorDashboard = () => {
                         <span className={`status-badge status-open`} style={{ fontSize: '10px' }}>
                           {assignment.difficulty || assignment.main?.difficulty || 'easy'}
                         </span>
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            navigate(`/plagiarism/${assignment._id || assignment.id}`)
-                          }}
-                          style={{
-                            background: '#dc2626',
-                            color: 'white',
-                            border: 'none',
-                            padding: '4px 8px',
-                            borderRadius: '4px',
-                            fontSize: '10px',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px'
-                          }}
-                        >
-                          <Shield size={12} />
-                          Check Plagiarism
-                        </button>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              navigate(`/assignment/${assignment._id || assignment.id}`)
+                            }}
+                            style={{
+                              background: '#3b82f6',
+                              color: 'white',
+                              border: 'none',
+                              padding: '4px 8px',
+                              borderRadius: '4px',
+                              fontSize: '10px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}
+                            title="View Assignment"
+                          >
+                            <Eye size={12} />
+                            View
+                          </button>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleEditAssignment(assignment)
+                            }}
+                            style={{
+                              background: '#10b981',
+                              color: 'white',
+                              border: 'none',
+                              padding: '4px 8px',
+                              borderRadius: '4px',
+                              fontSize: '10px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}
+                            title="Edit Assignment"
+                          >
+                            <Edit size={12} />
+                            Edit
+                          </button>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (confirm('Are you sure you want to delete this assignment?')) {
+                                handleDeleteAssignment(assignment._id || assignment.id)
+                              }
+                            }}
+                            style={{
+                              background: '#ef4444',
+                              color: 'white',
+                              border: 'none',
+                              padding: '4px 8px',
+                              borderRadius: '4px',
+                              fontSize: '10px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}
+                            title="Delete Assignment"
+                          >
+                            <Trash2 size={12} />
+                            Delete
+                          </button>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              navigate(`/plagiarism/${assignment._id || assignment.id}`)
+                            }}
+                            style={{
+                              background: '#dc2626',
+                              color: 'white',
+                              border: 'none',
+                              padding: '4px 8px',
+                              borderRadius: '4px',
+                              fontSize: '10px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}
+                            title="Check Plagiarism"
+                          >
+                            <Shield size={12} />
+                            Plagiarism
+                          </button>
+                        </div>
                       </div>
                       <p style={{ color: 'var(--text-secondary)', margin: '4px 0', fontSize: '13px', lineHeight: '1.4' }}>
                         {(assignment.description || assignment.main?.description_body || 'No description').substring(0, 80)}...
@@ -225,7 +335,7 @@ const InstructorDashboard = () => {
                       <div className="flex gap-3" style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '8px' }}>
                         <span>Created: {new Date(assignment.createdAt).toLocaleDateString()}</span>
                         <span>Language: {assignment.supportedLanguages?.[0] || assignment.main?.code_default_language || 'javascript'}</span>
-                        <span>Submissions: {assignment.submissions || assignment.main?.submission_count || 0}</span>
+                        <span>Submissions: {assignment.submissionCount || assignment.main?.submission_count || 0}</span>
                       </div>
                     </div>
                     <div className="text-center">
@@ -246,15 +356,27 @@ const InstructorDashboard = () => {
           <div className="card">
             <h3 style={{ fontSize: '1.25rem', fontWeight: '600', marginBottom: '16px' }}>Quick Actions</h3>
             <div className="grid gap-3">
-              <button className="btn btn-primary" style={{ justifyContent: 'flex-start', padding: '16px' }}>
+              <button 
+                onClick={() => setShowModal(true)}
+                className="btn btn-primary" 
+                style={{ justifyContent: 'flex-start', padding: '16px' }}
+              >
                 <Plus size={20} />
                 Create New Assignment
               </button>
-              <button className="btn btn-secondary" style={{ justifyContent: 'flex-start', padding: '16px' }}>
+              <button 
+                onClick={() => navigate('/manage-students')}
+                className="btn btn-secondary" 
+                style={{ justifyContent: 'flex-start', padding: '16px' }}
+              >
                 <Users size={20} />
                 Manage Students
               </button>
-              <button className="btn btn-secondary" style={{ justifyContent: 'flex-start', padding: '16px' }}>
+              <button 
+                onClick={() => navigate('/analytics')}
+                className="btn btn-secondary" 
+                style={{ justifyContent: 'flex-start', padding: '16px' }}
+              >
                 <BarChart3 size={20} />
                 View Analytics
               </button>
