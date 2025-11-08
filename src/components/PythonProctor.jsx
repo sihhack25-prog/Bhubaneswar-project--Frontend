@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react'
 
-const PythonProctor = ({ isActive, onViolation }) => {
+const PythonProctor = ({ isActive, onViolation, totalViolations = 0 }) => {
   const [status, setStatus] = useState('Starting...')
   const [analysis, setAnalysis] = useState({
     enrolled: false,
@@ -59,7 +59,7 @@ const PythonProctor = ({ isActive, onViolation }) => {
 
   const startFrameAnalysis = () => {
     intervalRef.current = setInterval(async () => {
-      if (!videoRef.current || !canvasRef.current) return
+      if (!videoRef.current || !canvasRef.current || totalViolations >= 3) return
 
       try {
         // Capture frame from video
@@ -100,6 +100,10 @@ const PythonProctor = ({ isActive, onViolation }) => {
   }
 
   const checkViolations = (analysisData) => {
+    if (totalViolations >= 3) {
+      return // Stop checking violations if limit reached
+    }
+    
     const { violations, multiplePersons, gazeDirection } = analysisData
     
     // Face violations

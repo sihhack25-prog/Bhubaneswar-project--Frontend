@@ -21,6 +21,7 @@ if __name__ == "__main__":
   const [theme, setTheme] = useState('vs-dark')
   const [proctorActive, setProctorActive] = useState(false)
   const [violations, setViolations] = useState([])
+  const [terminated, setTerminated] = useState(false)
   const editorRef = useRef(null)
 
   const languageMap = {
@@ -127,13 +128,22 @@ int main() {
   }
 
   const handleViolation = (type, message) => {
-    const violation = { type, message, timestamp: new Date().toISOString() }
-    setViolations(prev => [...prev, violation])
-    
-    if (type === 'CAMERA_VIOLATION' || violations.length >= 5) {
-      alert('Test terminated due to proctoring violations!')
-      setProctorActive(false)
+    if (terminated || violations.length >= 3) {
+      return
     }
+    
+    const violation = { type, message, timestamp: new Date().toISOString() }
+    setViolations(prev => {
+      const newViolations = [...prev, violation]
+      if (newViolations.length >= 3) {
+        setTerminated(true)
+        setTimeout(() => {
+          alert('Maximum violations reached! Test terminated.')
+          setProctorActive(false)
+        }, 100)
+      }
+      return newViolations.slice(0, 3)
+    })
   }
 
   const toggleProctor = async () => {
@@ -216,12 +226,12 @@ int main() {
         <div className="card mb-4" style={{backgroundColor: '#fff3cd', border: '1px solid #ffeaa7'}}>
           <h4 style={{color: '#856404'}}>⚠️ Proctoring Active</h4>
           <p style={{color: '#856404', margin: '5px 0'}}>Full-screen mode enforced • Tab switching monitored • Copy/paste disabled</p>
-          <p style={{color: '#856404', fontSize: '12px'}}>Violations: {violations.length}/5</p>
+          <p style={{color: '#856404', fontSize: '12px'}}>Violations: {violations.length}/3</p>
         </div>
       )}
 
       <BasicProctor 
-        isActive={proctorActive} 
+        isActive={proctorActive && !terminated} 
         onViolation={handleViolation}
       />
 

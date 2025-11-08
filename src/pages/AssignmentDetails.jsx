@@ -25,6 +25,7 @@ const AssignmentDetails = ({ user }) => {
   const [previousSubmission, setPreviousSubmission] = useState(null)
   const [proctorActive, setProctorActive] = useState(false)
   const [violations, setViolations] = useState([])
+  const [terminated, setTerminated] = useState(false)
 
   useEffect(() => {
     loadAssignment()
@@ -153,14 +154,23 @@ const AssignmentDetails = ({ user }) => {
   }
 
   const handleViolation = (type, message) => {
-    const violation = { type, message, timestamp: new Date().toISOString() }
-    setViolations(prev => [...prev, violation])
-    
-    if (type === 'CAMERA_VIOLATION' || violations.length >= 3) {
-      alert('Assignment terminated due to proctoring violations!')
-      setProctorActive(false)
-      setHasSubmitted(true) // Lock assignment
+    if (terminated || violations.length >= 3) {
+      return // Stop processing violations
     }
+    
+    const violation = { type, message, timestamp: new Date().toISOString() }
+    setViolations(prev => {
+      const newViolations = [...prev, violation]
+      if (newViolations.length >= 3) {
+        setTerminated(true)
+        setTimeout(() => {
+          alert('Maximum violations reached! Assignment terminated.')
+          setProctorActive(false)
+          setHasSubmitted(true)
+        }, 100)
+      }
+      return newViolations.slice(0, 3) // Cap at 3 violations
+    })
   }
 
   const toggleProctor = async () => {
@@ -353,13 +363,14 @@ const AssignmentDetails = ({ user }) => {
         <div className="card mb-4" style={{backgroundColor: '#fff3cd', border: '1px solid #ffeaa7'}}>
           <h4 style={{color: '#856404'}}>🛡️ Secure Assignment Mode</h4>
           <p style={{color: '#856404', margin: '5px 0'}}>Camera monitoring • Full-screen enforced • Copy/paste disabled</p>
-          <p style={{color: '#856404', fontSize: '12px'}}>Violations: {violations.length}/3</p>
+          <p style={{color: '#856404', fontSize: '12px'}}>Violations: {Math.min(violations.length, 3)}/3</p>
         </div>
       )}
 
       <PythonProctor 
-        isActive={proctorActive} 
+        isActive={proctorActive && !terminated} 
         onViolation={handleViolation}
+        totalViolations={violations.length}
       />
 
       <div className="grid grid-2" style={{ gap: '20px' }}>
@@ -395,7 +406,7 @@ const AssignmentDetails = ({ user }) => {
                 <div className="flex gap-2">
                   <button
                     onClick={runCode}
-                    disabled={isRunning || hasSubmitted}
+                    disabled={isRunning || hasSubmitted || terminated}
                     className="btn btn-secondary"
                   >
                     <Play size={16} />
@@ -403,17 +414,17 @@ const AssignmentDetails = ({ user }) => {
                   </button>
                   <button
                     onClick={testCode}
-                    disabled={isTesting || hasSubmitted}
+                    disabled={isTesting || hasSubmitted || terminated}
                     className="btn btn-primary"
                   >
                     {isTesting ? 'Testing...' : 'Test All Cases'}
                   </button>
                   <button
                     onClick={handleSubmit}
-                    disabled={isSubmitting || hasSubmitted}
+                    disabled={isSubmitting || hasSubmitted || terminated}
                     className="btn btn-success"
                   >
-                    {hasSubmitted ? 'Already Submitted' : (isSubmitting ? 'Submitting...' : 'Submit Final')}
+                    {terminated ? 'Terminated' : (hasSubmitted ? 'Already Submitted' : (isSubmitting ? 'Submitting...' : 'Submit Final'))}
                   </button>
                 </div>
               </div>

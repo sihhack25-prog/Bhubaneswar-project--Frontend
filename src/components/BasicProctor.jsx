@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useRef } from 'react'
 
-const BasicProctor = ({ isActive, onViolation }) => {
+const BasicProctor = ({ isActive, onViolation, totalViolations = 0 }) => {
   const [status, setStatus] = useState('Starting...')
   const [violations, setViolations] = useState({ tabs: 0, copy: 0 })
   const [cameraActive, setCameraActive] = useState(false)
+  const [terminated, setTerminated] = useState(false)
   const videoRef = useRef(null)
 
   useEffect(() => {
@@ -29,27 +30,23 @@ const BasicProctor = ({ isActive, onViolation }) => {
     }
 
     const handleVisibilityChange = () => {
-      if (document.hidden && isActive) {
+      if (document.hidden && isActive && !terminated && totalViolations < 3) {
         setViolations(prev => {
           const newViolations = { ...prev, tabs: prev.tabs + 1 }
-          if (newViolations.tabs >= 3) {
-            setTimeout(() => onViolation?.('TAB_SWITCH', 'Multiple tab switches'), 0)
-          }
+          setTimeout(() => onViolation?.('TAB_SWITCH', 'Tab switch detected'), 0)
           return newViolations
         })
       }
     }
 
     const handleKeyDown = (e) => {
-      if (!isActive) return
+      if (!isActive || terminated || totalViolations >= 3) return
       
       if ((e.ctrlKey || e.metaKey) && ['c', 'v', 'x'].includes(e.key)) {
         e.preventDefault()
         setViolations(prev => {
           const newViolations = { ...prev, copy: prev.copy + 1 }
-          if (newViolations.copy >= 5) {
-            setTimeout(() => onViolation?.('COPY_PASTE', 'Multiple copy attempts'), 0)
-          }
+          setTimeout(() => onViolation?.('COPY_PASTE', 'Copy/paste attempt'), 0)
           return newViolations
         })
       }
@@ -72,7 +69,13 @@ const BasicProctor = ({ isActive, onViolation }) => {
     }
   }, [isActive, onViolation])
 
-  if (!isActive) return null
+  useEffect(() => {
+    if (totalViolations >= 3) {
+      setTerminated(true)
+    }
+  }, [totalViolations])
+
+  if (!isActive || terminated) return null
 
   return (
     <>
